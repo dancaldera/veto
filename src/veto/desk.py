@@ -147,6 +147,45 @@ class VetoDesk:
                 results.append({**row, "decision_id": decision_id})
         return results
 
+    def explain_decision(self, symbol: str) -> dict[str, Any]:
+        self.ledger.assert_manifest(self.cfg)
+        rows = [
+            d
+            for d in self.ledger.decisions(self.cfg.run_id, "baseline")
+            if d["symbol"] == symbol
+        ]
+        run = self.ledger.run(self.cfg.run_id)
+        halted = self.ledger.is_halted(self.cfg.run_id)
+        if not rows:
+            return {
+                "symbol": symbol,
+                "reason": "no_decision",
+                "halted": halted,
+                "halt_reason": run["halt_reason"] if run else None,
+            }
+        d = rows[-1]
+        return {
+            "symbol": d["symbol"],
+            "asset": d["asset"],
+            "signal": d["signal"],
+            "action": d["action"],
+            "reason": d["reason"],
+            "status": d["status"],
+            "bar_end": d["bar_end"],
+            "signal_price": d["signal_price"],
+            "halted": halted,
+            "halt_reason": run["halt_reason"] if run else None,
+        }
+
+    def halt_status(self) -> dict[str, Any]:
+        run = self.ledger.assert_manifest(self.cfg)
+        return {
+            "run_id": self.cfg.run_id,
+            "halted": self.ledger.is_halted(self.cfg.run_id),
+            "status": run["status"],
+            "halt_reason": run["halt_reason"],
+        }
+
     def preview_collar(self, symbol: str, spot: float | None = None) -> dict[str, Any]:
         if self.broker is None:
             raise RunSafetyError("A paper broker is required to preview a collar")

@@ -26,7 +26,10 @@ veto status               # paper equity/cash (needs .env, never committed)
 veto init                 # bind ledger to a clean $100k paper account
 veto init --offline       # local ledger only; does not talk to Alpaca
 veto preview-collar AAPL  # 1-lot put/call overlay, no order
+veto scan --dry-run       # closed daily bars; does not write the ledger
+veto explain NVDA         # latest baseline reason (the veto)
 veto execute --asset stock --dry-run
+python -m veto.mcp_server # MCP: inspect/explain/preview; scan/execute default dry-run
 ```
 
 ## The bet

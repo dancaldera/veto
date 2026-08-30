@@ -94,6 +94,16 @@ def main(argv: list[str] | None = None) -> int:
     ini.add_argument("--ledger", default=None)
     ini.set_defaults(func=cmd_init)
 
+    sc = sub.add_parser("scan", help="scan closed daily bars and record ranked intents")
+    sc.add_argument("--dry-run", action="store_true", help="do not write the ledger")
+    sc.add_argument("--ledger", default=None)
+    sc.set_defaults(func=cmd_scan)
+
+    xp = sub.add_parser("explain", help="explain the latest baseline decision for a symbol")
+    xp.add_argument("symbol")
+    xp.add_argument("--ledger", default=None)
+    xp.set_defaults(func=cmd_explain)
+
     ex = sub.add_parser("execute", help="execute pending baseline intents (gap-capped)")
     ex.add_argument("--asset", choices=["stock", "crypto"], required=True)
     ex.add_argument("--dry-run", action="store_true")
@@ -107,6 +117,56 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     return args.func(args)
+
+
+def cmd_scan(args) -> int:
+    from .bars import fetch_watchlist
+    from .broker import PaperBroker
+
+    cfg = _cfg(args.config)
+    ledger = _ledger(args.ledger)
+    try:
+        ledger.assert_manifest(cfg)
+        bars = fetch_watchlist(cfg)
+        desk = VetoDesk(cfg, ledger, PaperBroker() if not args.dry_run else None)
+        rows = desk.scan(bars, record=not args.dry_run)
+        baseline = [r for r in rows if r.get("portfolio") == "baseline"]
+        mode = " (dry run)" if args.dry_run else ""
+        print(f"Scan{mode}: {len(baseline)} baseline rows")
+        pending = 0
+        for row in baseline:
+            action = row.get("action", "none")
+            if action == "buy_intent":
+                pending += 1
+            print(
+                f"  {row.get('symbol','?'):<10} [{row.get('asset','?'):<6}] "
+                f"signal={row.get('signal','-'):<4} action={action:<12} reason={row.get('reason','')}"
+            )
+        if args.dry_run:
+            print(f"{pending} baseline buy intent(s) would be recorded; ledger unchanged.")
+        else:
+            print(f"{pending} baseline buy intent(s) pending gap-capped execution.")
+    except RunSafetyError as exc:
+        raise SystemExit(str(exc)) from exc
+    finally:
+        ledger.close()
+    return 0
+
+
+def cmd_explain(args) -> int:
+    cfg = _cfg(args.config)
+    ledger = _ledger(args.ledger)
+    try:
+        desk = VetoDesk(cfg, ledger)
+        symbol = args.symbol if "/" in args.symbol else args.symbol.upper()
+        info = desk.explain_decision(symbol)
+        for key, value in info.items():
+            print(f"  {key}: {value}")
+    except RunSafetyError as exc:
+        raise SystemExit(str(exc)) from exc
+    finally:
+        ledger.close()
+    return 0
 
 
 def cmd_execute(args) -> int:

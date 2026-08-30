@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 broker = ["alpaca-py"]
+mcp = ["fastmcp", "alpaca-py"]
 demo = ["streamlit"]
 
 [project.scripts]
