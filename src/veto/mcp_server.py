@@ -45,7 +45,7 @@ def build_server():
 
     @mcp.tool
     def get_halt_status() -> dict:
-        """Whether new buys are halted, and why."""
+        """Whether new buys are halted, and why (unknown fill, qty mismatch, or drawdown)."""
         return _desk().halt_status()
 
     @mcp.tool

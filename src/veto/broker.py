@@ -78,6 +78,10 @@ class PaperBroker:
                     "qty": float(p.qty),
                     "avg_entry": float(p.avg_entry_price),
                     "current_price": float(p.current_price) if p.current_price else None,
+                    "asset_class": str(
+                        getattr(getattr(p, "asset_class", ""), "value", getattr(p, "asset_class", ""))
+                        or ""
+                    ),
                 }
             )
         return out
@@ -87,15 +91,27 @@ class PaperBroker:
         from alpaca.trading.requests import GetOrdersRequest
 
         req = GetOrdersRequest(status=QueryOrderStatus.ALL, limit=500, after=after)
-        return [
-            {
-                "id": str(o.id),
-                "symbol": str(o.symbol),
-                "status": str(getattr(o.status, "value", o.status)),
-                "side": str(getattr(o.side, "value", o.side)),
-            }
-            for o in self.client.get_orders(req)
-        ]
+        return [self._order_dict(o) for o in self.client.get_orders(req)]
+
+    def activities(self, activity_type: str, after: str | None = None) -> list[dict[str, Any]]:
+        """Read paper account activities. alpaca-py has no first-class method."""
+        data: dict[str, Any] = {"direction": "asc", "page_size": 100}
+        if after:
+            data["after"] = after[:10]
+        activities: list[dict[str, Any]] = []
+        seen_tokens: set[str] = set()
+        while True:
+            result = self.client.get(f"/account/activities/{activity_type}", data)
+            page = result if isinstance(result, list) else []
+            activities.extend(page)
+            if len(page) < data["page_size"]:
+                break
+            token = str(page[-1].get("id", ""))
+            if not token or token in seen_tokens:
+                break
+            seen_tokens.add(token)
+            data["page_token"] = token
+        return activities
 
     def clock(self) -> dict[str, Any]:
         value = self.client.get_clock()

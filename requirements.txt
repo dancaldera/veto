@@ -4,4 +4,3 @@ numpy
 pyyaml
 python-dotenv
 alpaca-py
-fastmcp

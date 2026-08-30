@@ -14,7 +14,7 @@ from .config import RunConfig
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 def _d(value: Any) -> Decimal:
@@ -90,8 +90,10 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE TABLE IF NOT EXISTS fills (
     fill_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES runs(run_id),
+    order_pk TEXT,
     decision_id TEXT,
     portfolio TEXT NOT NULL,
+    broker_order_id TEXT,
     symbol TEXT NOT NULL,
     asset TEXT NOT NULL,
     side TEXT NOT NULL,
@@ -101,6 +103,17 @@ CREATE TABLE IF NOT EXISTS fills (
     simulated INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS fees (
+    fee_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    broker_order_id TEXT,
+    symbol TEXT,
+    activity_type TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    raw_json TEXT NOT NULL DEFAULT '{}'
+);
+
 CREATE TABLE IF NOT EXISTS equity_snapshots (
     snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL REFERENCES runs(run_id),
@@ -108,6 +121,7 @@ CREATE TABLE IF NOT EXISTS equity_snapshots (
     captured_at TEXT NOT NULL,
     equity TEXT NOT NULL,
     cash TEXT NOT NULL,
+    gross_exposure TEXT NOT NULL DEFAULT '0',
     drawdown_pct REAL NOT NULL,
     source TEXT NOT NULL,
     UNIQUE(run_id, portfolio, captured_at, source)
@@ -122,8 +136,22 @@ class RunLedger:
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_SCHEMA)
+        self._migrate()
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Forward-compatible with ledgers created before fees/equity columns."""
+        fill_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(fills)")}
+        if "order_pk" not in fill_cols:
+            self.conn.execute("ALTER TABLE fills ADD COLUMN order_pk TEXT")
+        if "broker_order_id" not in fill_cols:
+            self.conn.execute("ALTER TABLE fills ADD COLUMN broker_order_id TEXT")
+        snap_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(equity_snapshots)")}
+        if "gross_exposure" not in snap_cols:
+            self.conn.execute(
+                "ALTER TABLE equity_snapshots ADD COLUMN gross_exposure TEXT NOT NULL DEFAULT '0'"
+            )
 
     def close(self) -> None:
         self.conn.close()
@@ -240,14 +268,44 @@ class RunLedger:
             )
         self.conn.commit()
 
+    def order_by_broker_id(self, run_id: str, broker_order_id: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT * FROM orders WHERE run_id=? AND broker_order_id=?",
+            (run_id, broker_order_id),
+        ).fetchone()
+
+    def update_order_status(self, order_pk: str, status: str) -> None:
+        self.conn.execute("UPDATE orders SET status=? WHERE order_pk=?", (status, order_pk))
+        self.conn.commit()
+
     def record_fill(self, row: dict[str, Any]) -> bool:
-        values = {"decision_id": None, "simulated": 0, **row}
+        values = {
+            "order_pk": None,
+            "decision_id": None,
+            "broker_order_id": None,
+            "simulated": 0,
+            **row,
+        }
         cur = self.conn.execute(
             """INSERT OR IGNORE INTO fills
-               (fill_id, run_id, decision_id, portfolio, symbol, asset, side,
-                qty, price, transaction_time, simulated)
-               VALUES (:fill_id, :run_id, :decision_id, :portfolio, :symbol, :asset,
-                       :side, :qty, :price, :transaction_time, :simulated)""",
+               (fill_id, run_id, order_pk, decision_id, portfolio, broker_order_id,
+                symbol, asset, side, qty, price, transaction_time, simulated)
+               VALUES (:fill_id, :run_id, :order_pk, :decision_id, :portfolio,
+                       :broker_order_id, :symbol, :asset, :side, :qty, :price,
+                       :transaction_time, :simulated)""",
+            values,
+        )
+        self.conn.commit()
+        return cur.rowcount == 1
+
+    def record_fee(self, row: dict[str, Any]) -> bool:
+        values = {"broker_order_id": None, "symbol": None, "raw_json": "{}", **row}
+        cur = self.conn.execute(
+            """INSERT OR IGNORE INTO fees
+               (fee_id, run_id, broker_order_id, symbol, activity_type, amount,
+                occurred_at, raw_json)
+               VALUES (:fee_id, :run_id, :broker_order_id, :symbol, :activity_type,
+                       :amount, :occurred_at, :raw_json)""",
             values,
         )
         self.conn.commit()
@@ -265,6 +323,8 @@ class RunLedger:
     def positions(self, run_id: str, portfolio: str = "baseline") -> dict[str, Position]:
         state: dict[str, dict[str, Any]] = {}
         for fill in self.fills(run_id, portfolio):
+            if fill["asset"] == "option":
+                continue
             symbol = fill["symbol"]
             item = state.setdefault(
                 symbol,
@@ -335,7 +395,36 @@ class RunLedger:
                 names.add(d["symbol"])
             if d["action"] == "collar_close" and d["status"] in {"submitted", "filled"}:
                 names.discard(d["symbol"])
-        for symbol, pos in self.positions(run_id, portfolio).items():
-            if pos.asset == "option" and pos.qty > 0:
-                names.add(symbol)
+        # Long option fills (the protective put) count even before collar_open
+        # is marked filled. Short call fills must not clear the name.
+        for fill in self.fills(run_id, portfolio):
+            if fill["asset"] == "option" and fill["side"] == "buy":
+                names.add(fill["symbol"])
         return names
+
+    def record_equity(self, row: dict[str, Any]) -> None:
+        values = {"gross_exposure": "0", **row}
+        self.conn.execute(
+            """INSERT OR REPLACE INTO equity_snapshots
+               (run_id, portfolio, captured_at, equity, cash, gross_exposure,
+                drawdown_pct, source)
+               VALUES (:run_id, :portfolio, :captured_at, :equity, :cash,
+                       :gross_exposure, :drawdown_pct, :source)""",
+            values,
+        )
+        self.conn.commit()
+
+    def latest_equity(self, run_id: str, portfolio: str = "baseline") -> sqlite3.Row | None:
+        return self.conn.execute(
+            """SELECT * FROM equity_snapshots WHERE run_id=? AND portfolio=?
+               ORDER BY captured_at DESC, snapshot_id DESC LIMIT 1""",
+            (run_id, portfolio),
+        ).fetchone()
+
+    def high_water(self, run_id: str, portfolio: str = "baseline") -> Decimal | None:
+        row = self.conn.execute(
+            """SELECT MAX(CAST(equity AS REAL)) AS hwm
+               FROM equity_snapshots WHERE run_id=? AND portfolio=?""",
+            (run_id, portfolio),
+        ).fetchone()
+        return Decimal(str(row["hwm"])) if row and row["hwm"] is not None else None

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
+import json
 from typing import Any, Mapping
 
 import pandas as pd
@@ -11,12 +14,25 @@ from .broker import PaperBroker
 from .config import RunConfig
 from .ledger import RunLedger, utc_now
 from .options import pick_collar
-from .risk import check_entry, check_overlay
+from .risk import check_entry, check_overlay, drawdown_pct
 from .signals import cross_strength, sma_cross_signal
 
 
 class RunSafetyError(RuntimeError):
     """Raised when an operation would violate the paper-run contract."""
+
+
+def _asset_from_broker_symbol(cfg: RunConfig, symbol: str) -> tuple[str, str]:
+    target = symbol.replace("/", "")
+    for configured, asset in cfg.symbols:
+        if configured.replace("/", "") == target:
+            return configured, asset
+    return symbol, ""
+
+
+def _is_option_broker_position(position: Mapping[str, Any]) -> bool:
+    asset_class = str(position.get("asset_class") or "").lower()
+    return asset_class in {"option", "us_option"}
 
 
 def _bar_end(frame: pd.DataFrame) -> str:
@@ -70,6 +86,7 @@ class VetoDesk:
         if positions or orders:
             raise RunSafetyError("Paper account must be clean: no positions and no order history")
         self.ledger.initialize_run(self.cfg, account["id"])
+        self.record_account_snapshot(account)
         return account
 
     def scan(self, bars: Mapping[str, pd.DataFrame], record: bool = True) -> list[dict[str, Any]]:
@@ -180,11 +197,15 @@ class VetoDesk:
 
     def halt_status(self) -> dict[str, Any]:
         run = self.ledger.assert_manifest(self.cfg)
+        snap = self.ledger.latest_equity(self.cfg.run_id)
         return {
             "run_id": self.cfg.run_id,
             "halted": self.ledger.is_halted(self.cfg.run_id),
             "status": run["status"],
             "halt_reason": run["halt_reason"],
+            "equity": float(snap["equity"]) if snap else None,
+            "drawdown_pct": float(snap["drawdown_pct"]) if snap else None,
+            "captured_at": snap["captured_at"] if snap else None,
         }
 
     def preview_collar(self, symbol: str, spot: float | None = None) -> dict[str, Any]:
@@ -379,3 +400,224 @@ class VetoDesk:
         )
         self.ledger.set_decision_status(d["decision_id"], "submitted")
         return {"decision_id": d["decision_id"], "action": "submitted", "order_id": order_id}
+
+    def check_stops(self, dry_run: bool = False) -> list[dict[str, Any]]:
+        """8% fill-derived poll stop. Skip flatten when a collar put is live."""
+        self.ledger.assert_manifest(self.cfg)
+        if self.broker is None:
+            raise RunSafetyError("A paper broker is required to check stops")
+        collared = self.ledger.option_overlay_names(self.cfg.run_id, "baseline")
+        broker_positions = {p["symbol"].replace("/", ""): p for p in self.broker.positions()}
+        out: list[dict[str, Any]] = []
+        for symbol, pos in self.ledger.positions(self.cfg.run_id, "baseline").items():
+            if pos.asset == "option":
+                continue
+            if symbol in collared:
+                out.append({"symbol": symbol, "action": "none", "reason": "collar_live"})
+                continue
+            broker_pos = broker_positions.get(symbol.replace("/", ""))
+            if not broker_pos or broker_pos.get("current_price") is None:
+                out.append({"symbol": symbol, "action": "none", "reason": "missing_broker_position"})
+                continue
+            price = Decimal(str(broker_pos["current_price"]))
+            plpc = (price / pos.avg_entry - 1) * 100 if pos.avg_entry else Decimal(0)
+            if plpc > -Decimal(str(self.cfg.strategy.stop_loss_pct)):
+                out.append({"symbol": symbol, "action": "none", "plpc": float(plpc)})
+                continue
+            now = utc_now()
+            decision_id = self.ledger.record_decision(
+                {
+                    "run_id": self.cfg.run_id,
+                    "portfolio": "baseline",
+                    "symbol": symbol,
+                    "asset": pos.asset,
+                    "strategy": "stop-monitor",
+                    "bar_end": now,
+                    "signal": "STOP",
+                    "signal_price": str(price),
+                    "notional": "0",
+                    "action": "sell_intent",
+                    "reason": f"stop:{float(plpc):.4f}%",
+                    "status": "pending" if dry_run else "submitted",
+                    "config_hash": self.cfg.fingerprint,
+                }
+            )
+            if dry_run:
+                out.append(
+                    {
+                        "symbol": symbol,
+                        "action": "would_stop",
+                        "plpc": float(plpc),
+                        "decision_id": decision_id,
+                    }
+                )
+                continue
+            order_id = self.broker.close(symbol)
+            client_id = f"veto-{decision_id[:12]}-stop"
+            self.ledger.record_order(
+                {
+                    "run_id": self.cfg.run_id,
+                    "decision_id": decision_id,
+                    "portfolio": "baseline",
+                    "client_order_id": client_id,
+                    "broker_order_id": order_id,
+                    "symbol": symbol,
+                    "asset": pos.asset,
+                    "side": "sell",
+                    "status": "submitted",
+                    "submitted_at": now,
+                }
+            )
+            out.append(
+                {
+                    "symbol": symbol,
+                    "action": "stopped",
+                    "plpc": float(plpc),
+                    "order_id": order_id,
+                    "decision_id": decision_id,
+                }
+            )
+        return out
+
+    def reconcile(self) -> dict[str, Any]:
+        """Import paper fills/fees. Halt new buys on unknown orders or qty mismatch."""
+        self.ledger.assert_manifest(self.cfg)
+        if self.broker is None:
+            raise RunSafetyError("A paper broker is required to reconcile")
+        run = self.ledger.run(self.cfg.run_id)
+        after = run["started_at"] if run else None
+        unknown_orders: list[str] = []
+        new_fills = 0
+        for activity in self.broker.activities("FILL", after):
+            broker_order_id = str(activity.get("order_id", "") or "")
+            order = (
+                self.ledger.order_by_broker_id(self.cfg.run_id, broker_order_id)
+                if broker_order_id
+                else None
+            )
+            if order:
+                symbol, asset = order["symbol"], order["asset"]
+            else:
+                symbol, asset = _asset_from_broker_symbol(
+                    self.cfg, str(activity.get("symbol", ""))
+                )
+                unknown_orders.append(broker_order_id or str(activity.get("id", "")))
+            new_fills += int(
+                self.ledger.record_fill(
+                    {
+                        "fill_id": str(activity.get("id")),
+                        "run_id": self.cfg.run_id,
+                        "order_pk": order["order_pk"] if order else None,
+                        "decision_id": order["decision_id"] if order else None,
+                        "portfolio": "baseline",
+                        "broker_order_id": broker_order_id or None,
+                        "symbol": symbol,
+                        "asset": asset or "stock",
+                        "side": str(activity.get("side", "")),
+                        "qty": str(activity.get("qty", 0)),
+                        "price": str(activity.get("price", 0)),
+                        "transaction_time": str(activity.get("transaction_time") or utc_now()),
+                    }
+                )
+            )
+
+        started = datetime.fromisoformat(run["started_at"]) if run else None
+        for broker_order in self.broker.all_orders(after=started):
+            order = self.ledger.order_by_broker_id(self.cfg.run_id, broker_order["id"])
+            if not order:
+                unknown_orders.append(broker_order["id"])
+                continue
+            status = str(broker_order["status"]).lower()
+            self.ledger.update_order_status(order["order_pk"], status)
+            decision_id = order["decision_id"]
+            if not decision_id:
+                continue
+            if float(broker_order.get("filled_qty") or 0) > 0 or status == "filled":
+                self.ledger.set_decision_status(decision_id, "filled")
+            elif status in {"canceled", "expired", "rejected", "done_for_day"}:
+                decision_status = "rejected" if status == "rejected" else "expired"
+                self.ledger.set_decision_status(decision_id, decision_status, f"broker:{status}")
+
+        new_fees = 0
+        for activity_type in ("CFEE", "FEE"):
+            for activity in self.broker.activities(activity_type, after):
+                amount = abs(Decimal(str(activity.get("net_amount") or 0)))
+                if amount == 0 and activity.get("qty") and activity.get("price"):
+                    amount = abs(Decimal(str(activity["qty"])) * Decimal(str(activity["price"])))
+                new_fees += int(
+                    self.ledger.record_fee(
+                        {
+                            "fee_id": str(activity.get("id")),
+                            "run_id": self.cfg.run_id,
+                            "broker_order_id": activity.get("order_id"),
+                            "symbol": activity.get("symbol"),
+                            "activity_type": activity_type,
+                            "amount": str(amount),
+                            "occurred_at": str(
+                                activity.get("date") or activity.get("transaction_time") or utc_now()
+                            ),
+                            "raw_json": json.dumps(activity, default=str, sort_keys=True),
+                        }
+                    )
+                )
+
+        account = self.broker.account()
+        broker_positions = {
+            p["symbol"].replace("/", ""): Decimal(str(p["qty"]))
+            for p in self.broker.positions()
+            if not _is_option_broker_position(p)
+        }
+        ledger_positions = {
+            s.replace("/", ""): p.qty for s, p in self.ledger.positions(self.cfg.run_id).items()
+        }
+        mismatches = []
+        for symbol in sorted(set(broker_positions) | set(ledger_positions)):
+            broker_qty = broker_positions.get(symbol, Decimal(0))
+            ledger_qty = ledger_positions.get(symbol, Decimal(0))
+            if abs(broker_qty - ledger_qty) > Decimal("0.00000001"):
+                mismatches.append(symbol)
+
+        unique_unknown = list(dict.fromkeys(unknown_orders))
+        snap = self.record_account_snapshot(account)
+        already_halted = self.ledger.is_halted(self.cfg.run_id)
+        if unique_unknown or mismatches:
+            self.ledger.halt(
+                self.cfg.run_id,
+                f"reconciliation_failed:unknown_orders={unique_unknown},qty={mismatches}",
+            )
+        elif not already_halted and snap["drawdown_pct"] >= self.cfg.portfolio.drawdown_halt_pct:
+            self.ledger.halt(self.cfg.run_id, f"drawdown_halt:{snap['drawdown_pct']:.4f}%")
+
+        run_after = self.ledger.run(self.cfg.run_id)
+        return {
+            "new_fills": new_fills,
+            "new_fees": new_fees,
+            "unknown_orders": unique_unknown,
+            "quantity_mismatches": mismatches,
+            "equity": account["equity"],
+            "drawdown_pct": float(snap["drawdown_pct"]),
+            "halted": self.ledger.is_halted(self.cfg.run_id),
+            "halt_reason": run_after["halt_reason"] if run_after else None,
+        }
+
+    def record_account_snapshot(self, account: Mapping[str, Any]) -> dict[str, Any]:
+        hwm = self.ledger.high_water(self.cfg.run_id) or Decimal(str(self.cfg.starting_equity))
+        equity = float(account["equity"])
+        hwm_float = max(float(hwm), equity)
+        dd = drawdown_pct(equity, hwm_float)
+        gross = sum(
+            (p.cost_basis for p in self.ledger.positions(self.cfg.run_id).values()),
+            Decimal(0),
+        )
+        row = {
+            "run_id": self.cfg.run_id,
+            "portfolio": "baseline",
+            "captured_at": utc_now(),
+            "equity": str(equity),
+            "cash": str(account["cash"]),
+            "gross_exposure": str(gross),
+            "drawdown_pct": dd,
+            "source": "alpaca-paper",
+        }
+        self.ledger.record_equity(row)
+        return row

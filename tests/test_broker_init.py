@@ -67,6 +67,10 @@ def test_init_accepts_clean_hundred_k(tmp_path):
         row = ledger.run(cfg.run_id)
         assert row["config_hash"] == cfg.fingerprint
         assert row["broker_account_id"] == "paper-id"
+        snap = ledger.latest_equity(cfg.run_id)
+        assert snap is not None
+        assert float(snap["equity"]) == 100_000
+        assert float(snap["drawdown_pct"]) == 0.0
     finally:
         ledger.close()
 

@@ -128,3 +128,9 @@ def check_overlay(
     if estimated_debit is not None and estimated_debit > cfg.options.max_premium:
         return RiskResult(False, "options_skipped:premium_cap")
     return RiskResult(True, "allowed")
+
+
+def drawdown_pct(equity: float, high_water: float) -> float:
+    if high_water <= 0:
+        return 0.0
+    return max(0.0, (high_water - equity) / high_water * 100)

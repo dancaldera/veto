@@ -118,6 +118,15 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("--ledger", default=None)
     pc.set_defaults(func=cmd_preview_collar)
 
+    rc = sub.add_parser("reconcile", help="import paper fills/fees; halt on unknown order or qty mismatch")
+    rc.add_argument("--ledger", default=None)
+    rc.set_defaults(func=cmd_reconcile)
+
+    sp = sub.add_parser("stops", help="poll fill-derived 8%% stops (skip if a collar put is live)")
+    sp.add_argument("--dry-run", action="store_true")
+    sp.add_argument("--ledger", default=None)
+    sp.set_defaults(func=cmd_stops)
+
     args = parser.parse_args(argv)
     return args.func(args)
 
@@ -218,6 +227,58 @@ def cmd_preview_collar(args) -> int:
             print(f"  expiry={preview['expiration']} dte={preview['dte']}")
             print(f"  estimated_debit=${preview['estimated_debit']:.2f}")
             print(f"  cli: {preview['cli']}")
+    except RunSafetyError as exc:
+        raise SystemExit(str(exc)) from exc
+    finally:
+        ledger.close()
+    return 0
+
+
+def cmd_reconcile(args) -> int:
+    from .broker import PaperBroker
+
+    cfg = _cfg(args.config)
+    ledger = _ledger(args.ledger)
+    try:
+        desk = VetoDesk(cfg, ledger, PaperBroker())
+        result = desk.reconcile()
+        print("Reconcile (paper fills/fees):")
+        print(f"  new_fills:            {result['new_fills']}")
+        print(f"  new_fees:             {result['new_fees']}")
+        print(f"  unknown_orders:       {result['unknown_orders']}")
+        print(f"  quantity_mismatches:  {result['quantity_mismatches']}")
+        print(f"  equity:               ${result['equity']:,.2f}")
+        print(f"  drawdown:             {result['drawdown_pct']:.4f}%")
+        print(f"  halted:               {result['halted']}")
+        if result.get("halt_reason"):
+            print(f"  halt_reason:          {result['halt_reason']}")
+    except RunSafetyError as exc:
+        raise SystemExit(str(exc)) from exc
+    finally:
+        ledger.close()
+    return 0
+
+
+def cmd_stops(args) -> int:
+    from .broker import PaperBroker
+
+    cfg = _cfg(args.config)
+    ledger = _ledger(args.ledger)
+    try:
+        desk = VetoDesk(cfg, ledger, PaperBroker())
+        rows = desk.check_stops(dry_run=args.dry_run)
+        mode = " (dry run)" if args.dry_run else ""
+        print(f"Stops{mode}:")
+        if not rows:
+            print("  no cash-equity positions")
+        for row in rows:
+            extra = []
+            if "plpc" in row:
+                extra.append(f"plpc={row['plpc']:.2f}%")
+            if row.get("reason"):
+                extra.append(row["reason"])
+            suffix = f"  {' '.join(extra)}" if extra else ""
+            print(f"  {row.get('symbol','?'):<10} action={row.get('action','none'):<22}{suffix}")
     except RunSafetyError as exc:
         raise SystemExit(str(exc)) from exc
     finally:

@@ -4,17 +4,20 @@ Event: [Alpaca AI Trading Agents Hackathon](https://lablab.ai/ai-hackathons/alpa
 Judging (Alpaca): **P&L and creativity/engagement**.  
 lablab also scores presentation, business value, application of technology, originality. Two extra prizes are social engagement.
 
-This file is the spec. Code is not in the first commit.
+This file is the spec. Keep it honest against the repo.
 
 ## Eligibility checklist
 
-- [ ] Dedicated Alpaca **paper** account, **$100,000** cash and equity, no leftover positions or orders
-- [ ] Options enabled on that paper account
-- [ ] Trading API **and** MCP or CLI (Veto will use all three)
-- [ ] Options in the live strategy (defined-risk overlay, not 0DTE directional)
-- [ ] One-page write-up: AI logic, risk gates, Alpaca infrastructure
-- [ ] Public GitHub, demo URL (`streamlit_app.py`; Streamlit Cloud + paper secrets), ≤5 min video, PDF slides, 16:9 cover
-- [ ] lablab team named **Veto**
+- [x] Dedicated Alpaca **paper** account, **$100,000** cash and equity, no leftover positions or orders
+- [x] Options enabled on that paper account
+- [x] Trading API **and** MCP or CLI (Veto will use all three)
+- [x] Options in the live strategy (defined-risk overlay, not 0DTE directional)
+- [x] One-page write-up: AI logic, risk gates, Alpaca infrastructure (`docs/one-pager.pdf`)
+- [ ] Public demo URL (`streamlit_app.py`; Streamlit Cloud + paper secrets)
+- [x] PDF slides (`docs/slides.pdf`) and 16:9 cover (`docs/cover.png`)
+- [ ] ≤4 min video (record from live demo + CLI; do not fake a fill)
+- [x] Public GitHub
+- [x] lablab team named **Veto**
 
 ## Architecture target
 
@@ -58,7 +61,7 @@ The model talks to MCP. MCP talks to the desk. The desk is the only thing that m
 
 | Tool | Side effect |
 |---|---|
-| `get_account` / `get_positions` / `get_halt_status` | read |
+| `get_account` / `get_positions` / `get_halt_status` | read (halt reasons from reconcile / drawdown) |
 | `latest_decisions` | read |
 | `explain_decision(symbol)` | read |
 | `preview_collar(symbol)` | read |
@@ -76,6 +79,16 @@ Server refuses to start unless paper mode is proven.
 5. Paper-only disclaimer and this repo.
 
 If the market prints no fresh SMA cross during the week, **do not fake one**. Show honest HOLDs, `preview_collar`, and the prior-research tape.
+
+## Remaining before submit
+
+1. **Commit + push** the current fail-closed + docs work, then deploy Streamlit Community Cloud:
+   - share.streamlit.io → `dancaldera/veto` / `main` / `streamlit_app.py` / Python 3.12
+   - Secrets: `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` (paper `PK…` only)
+   - Confirm $100k equity, dry-scan table, collar preview + CLI string, halt read-out, **no buy button**
+   - Paste the `*.streamlit.app` URL on the lablab team page
+2. Record ≤4 min video from the live demo + `veto scan --dry-run` + `preview-collar` + `veto reconcile`. Do not fake a fill. HOLD is allowed.
+3. Paste [docs/lablab-copy.md](lablab-copy.md) on submit (tags: Alpaca, Alpaca MCP, Alpaca CLI, Python, Streamlit, FinBERT).
 
 ## Out of scope
 

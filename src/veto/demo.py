@@ -10,6 +10,7 @@ from .cli import DEFAULT_CONFIG, DEFAULT_LEDGER
 from .config import load_run_config
 from .desk import VetoDesk
 from .ledger import LedgerError, RunLedger
+from .risk import drawdown_pct
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -91,7 +92,7 @@ def render() -> None:
 
     desk = VetoDesk(cfg, ledger, broker)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     acct = account_snapshot(broker)
     halt = None
     try:
@@ -108,6 +109,10 @@ def render() -> None:
         col2.metric("Cash", "—")
         col3.metric("Options level", "—")
     col4.metric("Halt", "YES" if halt and halt.get("halted") else "no")
+    dd = halt.get("drawdown_pct") if halt else None
+    if dd is None and acct and "error" not in acct:
+        dd = drawdown_pct(float(acct["equity"]), cfg.starting_equity)
+    col5.metric("Drawdown", f"{dd:.2f}%" if dd is not None else "—")
 
     if broker_error:
         st.info(f"Paper broker offline: {broker_error}")
@@ -117,7 +122,10 @@ def render() -> None:
         st.error(f"Halt reason: {halt['halt_reason']}")
 
     st.subheader("Last scan (closed bars)")
-    st.write("Dry run only. This does not write the ledger or place orders.")
+    st.write(
+        "Dry run only. This does not write the ledger or place orders. "
+        "HOLD is an allowed tape — Veto will not invent a fresh SMA cross."
+    )
     if st.button("Run dry scan"):
         from .bars import fetch_watchlist
 
@@ -128,7 +136,7 @@ def render() -> None:
 
     table = st.session_state.get("scan_rows")
     if table:
-        st.dataframe(table, use_container_width=True, hide_index=True)
+        st.dataframe(table, width="stretch", hide_index=True)
         buys = [r for r in table if r["action"] == "buy_intent"]
         st.caption(f"{len(buys)} buy intent(s). Reasons on HOLD/reject rows are the veto.")
     else:
@@ -149,15 +157,22 @@ def render() -> None:
                 st.warning("Paper keys required for a live collar preview.")
             else:
                 with st.spinner("Loading option chain…"):
-                    st.json(desk.preview_collar(stock))
+                    preview = desk.preview_collar(stock)
+                st.json(preview)
+                if preview.get("cli"):
+                    st.caption("Alpaca CLI string (not executed):")
+                    st.code(preview["cli"], language="bash")
+
+    with st.expander("Halt status (read-only)"):
+        st.json(halt)
 
     st.divider()
     st.markdown(
         """
-**This demo cannot place orders.** There is no buy button.
+**This demo cannot place orders.** There is no buy button, no execute, and no reconcile.
 MCP tools default to dry-run. Paper results are simulated and are not a prediction.
 
-[GitHub](https://github.com/dancaldera/veto) · frozen SMA 10/30 · $625 clips · 8% collar overlay
+[GitHub](https://github.com/dancaldera/veto) · [one-pager](https://github.com/dancaldera/veto/blob/main/docs/one-pager.md) · frozen SMA 10/30 · $625 clips · 8% collar overlay
 """
     )
     ledger.close()
