@@ -59,9 +59,10 @@ def one_pager(path: Path) -> None:
     c.drawString(left, top - 50, "The model may research. Veto decides.")
     c.setFont("Helvetica", 8)
     c.drawRightString(width - left, top - 32, "Alpaca AI Trading Agents Hackathon")
-    c.drawRightString(width - left, top - 44, "Paper trading only  ·  github.com/dancaldera/veto")
+    c.drawRightString(width - left, top - 44, "github.com/dancaldera/veto")
+    c.drawRightString(width - left, top - 56, "bszv8nabdvvipmbetdvtgv.streamlit.app")
 
-    y = top - 72
+    y = top - 80
     body = (
         "Veto is a fail-closed Alpaca paper desk. An LLM can inspect, explain, and preview. "
         "It cannot size or send an order. Frozen rules authorize every fill. Stock entries "
@@ -225,7 +226,7 @@ def slides(path: Path) -> None:
             [
                 "Public repo, $100k paper, options overlay, MCP that cannot order, demo with no buy button.",
                 "Reconcile can halt. Stops poll. Drawdown 5% stops new buys. Exits stay on.",
-                "Paper trading is simulated. Not live performance. github.com/dancaldera/veto",
+                "Demo: bszv8nabdvvipmbetdvtgv.streamlit.app  ·  github.com/dancaldera/veto",
             ],
         ),
     ]

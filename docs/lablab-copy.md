@@ -1,6 +1,6 @@
 # lablab form copy
 
-Paste only after the public demo URL, one-pager PDF, slides PDF, cover image, and video exist. Do not submit early.
+Paste on submit after the video exists. Demo URL is live.
 
 **Title:** Veto — the model may research. Veto decides.
 
@@ -14,6 +14,7 @@ The model talks to Alpaca MCP. MCP talks to the desk. The desk is the only thing
 
 Paper trading is simulated. A prior 2022–2026 replay of this frozen book returned +5.4% at the $100k account against a +59% 25/25/50 benchmark. Veto does not pitch that as an edge. It pitches a desk that knows how to refuse.
 
-Repo: https://github.com/dancaldera/veto
+Repo: https://github.com/dancaldera/veto  
+Demo: https://bszv8nabdvvipmbetdvtgv.streamlit.app/
 
 **Tags:** Alpaca, Alpaca MCP, Alpaca CLI, Python, Streamlit, FinBERT

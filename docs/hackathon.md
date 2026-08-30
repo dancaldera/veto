@@ -13,7 +13,7 @@ This file is the spec. Keep it honest against the repo.
 - [x] Trading API **and** MCP or CLI (Veto will use all three)
 - [x] Options in the live strategy (defined-risk overlay, not 0DTE directional)
 - [x] One-page write-up: AI logic, risk gates, Alpaca infrastructure (`docs/one-pager.pdf`)
-- [ ] Public demo URL (`streamlit_app.py`; Streamlit Cloud + paper secrets)
+- [x] Public demo URL: [https://bszv8nabdvvipmbetdvtgv.streamlit.app/](https://bszv8nabdvvipmbetdvtgv.streamlit.app/)
 - [x] PDF slides (`docs/slides.pdf`) and 16:9 cover (`docs/cover.png`)
 - [ ] ≤4 min video (record from live demo + CLI; do not fake a fill)
 - [x] Public GitHub
@@ -82,12 +82,8 @@ If the market prints no fresh SMA cross during the week, **do not fake one**. Sh
 
 ## Remaining before submit
 
-1. **Commit + push** the current fail-closed + docs work, then deploy Streamlit Community Cloud:
-   - share.streamlit.io → `dancaldera/veto` / `main` / `streamlit_app.py` / Python 3.12
-   - Secrets: `ALPACA_API_KEY`, `ALPACA_SECRET_KEY` (paper `PK…` only)
-   - Confirm $100k equity, dry-scan table, collar preview + CLI string, halt read-out, **no buy button**
-   - Paste the `*.streamlit.app` URL on the lablab team page
-2. Record ≤4 min video from the live demo + `veto scan --dry-run` + `preview-collar` + `veto reconcile`. Do not fake a fill. HOLD is allowed.
+1. Paste the demo URL on the lablab team page: https://bszv8nabdvvipmbetdvtgv.streamlit.app/
+2. Record ≤4 min video from that demo + `veto scan --dry-run` + `preview-collar` + `veto reconcile`. Do not fake a fill. HOLD is allowed.
 3. Paste [docs/lablab-copy.md](lablab-copy.md) on submit (tags: Alpaca, Alpaca MCP, Alpaca CLI, Python, Streamlit, FinBERT).
 
 ## Out of scope

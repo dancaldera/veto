@@ -10,7 +10,9 @@ Paper trading is simulated. It is not live performance and not a prediction.
 
 ## Status
 
-Fail-closed loop is in: frozen manifest, SMA 10/30, ranked scan, gap-capped execute, 1-lot collar overlay, **reconcile**, **8% poll stops** (skipped when a collar is live), **5% drawdown halt**. Paper `init` is bound to a clean $100k Alpaca account. Streamlit demo code is ready; the public URL is the remaining host step.
+Fail-closed loop is in: frozen manifest, SMA 10/30, ranked scan, gap-capped execute, 1-lot collar overlay, **reconcile**, **8% poll stops** (skipped when a collar is live), **5% drawdown halt**. Paper `init` is bound to a clean $100k Alpaca account.
+
+**Live demo (paper only, no buy button):** [bszv8nabdvvipmbetdvtgv.streamlit.app](https://bszv8nabdvvipmbetdvtgv.streamlit.app/)
 
 | Document | What it is |
 |---|---|
@@ -40,23 +42,7 @@ pip install -e '.[demo,broker]'
 veto demo                 # Streamlit inspect/preview app — no buy button
 ```
 
-The demo is `streamlit_app.py` (Streamlit Community Cloud entrypoint). It never places orders.
-
-**Public URL (you deploy this; I cannot log into your Streamlit account):**
-
-1. Commit and push `main` to https://github.com/dancaldera/veto (this branch still has uncommitted reconcile/docs work).
-2. Open [share.streamlit.io](https://share.streamlit.io), New app, repo `dancaldera/veto`, branch `main`, main file `streamlit_app.py`, Python **3.12**.
-3. App settings → Secrets (TOML, paper keys only):
-
-   ```toml
-   ALPACA_API_KEY = "PK..."
-   ALPACA_SECRET_KEY = "..."
-   ```
-
-4. Confirm: equity about $100,000, dry-scan table, collar preview, halt read-out, **no buy button**.
-5. Paste the `*.streamlit.app` link on the lablab team page.
-
-Do not add execute/reconcile/stops buttons to the hosted app. Those can halt or flatten the paper account.
+The demo is `streamlit_app.py`. Hosted: [https://bszv8nabdvvipmbetdvtgv.streamlit.app/](https://bszv8nabdvvipmbetdvtgv.streamlit.app/). Paper secrets on Streamlit Cloud. The app never places orders.
 
 ## The bet
 

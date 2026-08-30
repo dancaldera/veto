@@ -1,7 +1,7 @@
 # Veto — one page
 
 **The model may research. Veto decides.**  
-Alpaca AI Trading Agents Hackathon · paper trading only · [github.com/dancaldera/veto](https://github.com/dancaldera/veto)
+Alpaca AI Trading Agents Hackathon · paper trading only · [github.com/dancaldera/veto](https://github.com/dancaldera/veto) · [demo](https://bszv8nabdvvipmbetdvtgv.streamlit.app/)
 
 Veto is a fail-closed **Alpaca paper** desk. An LLM can inspect, explain, and preview. It cannot size or send an order. Frozen rules authorize every fill. Stock entries carry a defined-risk **options overlay**. Crypto keeps an 8% fill-derived poll stop. Shadows never touch the broker.
 

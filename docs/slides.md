@@ -34,4 +34,4 @@ Frozen SMA 10/30, $100k, 2022–2026 Alpaca replay: **+5.4%** account vs **+59%*
 
 ## 8. Ask
 
-Judges: a public repo, a $100k paper account, a defined-risk overlay, MCP that cannot order, a demo with **no buy button**, and a desk that halts. Paper trading is simulated. Repo: https://github.com/dancaldera/veto
+Judges: a public repo, a $100k paper account, a defined-risk overlay, MCP that cannot order, a demo with **no buy button**, and a desk that halts. Paper trading is simulated. Demo: https://bszv8nabdvvipmbetdvtgv.streamlit.app/ · Repo: https://github.com/dancaldera/veto
