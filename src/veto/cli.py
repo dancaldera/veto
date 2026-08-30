@@ -110,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("--ledger", default=None)
     ex.set_defaults(func=cmd_execute)
 
+    dm = sub.add_parser("demo", help="open the Streamlit inspect/preview demo (no orders)")
+    dm.set_defaults(func=cmd_demo)
+
     pc = sub.add_parser("preview-collar", help="preview the 1-lot put/call overlay (no order)")
     pc.add_argument("symbol")
     pc.add_argument("--ledger", default=None)
@@ -188,6 +191,14 @@ def cmd_execute(args) -> int:
     finally:
         ledger.close()
     return 0
+
+
+def cmd_demo(args) -> int:
+    import subprocess
+    import sys
+
+    app = REPO / "streamlit_app.py"
+    return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app), "--server.headless", "true"])
 
 
 def cmd_preview_collar(args) -> int:

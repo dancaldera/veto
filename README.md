@@ -30,7 +30,11 @@ veto scan --dry-run       # closed daily bars; does not write the ledger
 veto explain NVDA         # latest baseline reason (the veto)
 veto execute --asset stock --dry-run
 python -m veto.mcp_server # MCP: inspect/explain/preview; scan/execute default dry-run
+pip install -e '.[demo,broker]'
+veto demo                 # Streamlit inspect/preview app — no buy button
 ```
+
+The demo is `streamlit_app.py` (Streamlit Community Cloud entrypoint). Add paper keys as **secrets** on the host (`ALPACA_API_KEY`, `ALPACA_SECRET_KEY`). The app never places orders.
 
 ## The bet
 

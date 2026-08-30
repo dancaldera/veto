@@ -73,7 +73,8 @@ class VetoDesk:
         return account
 
     def scan(self, bars: Mapping[str, pd.DataFrame], record: bool = True) -> list[dict[str, Any]]:
-        self.ledger.assert_manifest(self.cfg)
+        if record:
+            self.ledger.assert_manifest(self.cfg)
         results: list[dict[str, Any]] = []
         ranked = rank_buy_candidates(self.cfg, bars)
         buy_rank = {symbol: i for i, (symbol, *_rest) in enumerate(ranked)}

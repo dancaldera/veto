@@ -37,6 +37,23 @@ def test_drop_forming_bar_keeps_closed_yesterday():
     assert len(out) == 5
 
 
+def test_dry_scan_does_not_require_init(tmp_path):
+    cfg = load_run_config(CONFIG)
+    ledger = RunLedger(tmp_path / "fresh.sqlite")
+    try:
+        close = [100.0] * 41 + [200.0]
+        idx = pd.date_range("2026-01-01", periods=len(close), freq="D")
+        frame = pd.DataFrame(
+            {"Open": close, "High": close, "Low": close, "Close": close, "Volume": 1.0},
+            index=idx,
+        )
+        rows = VetoDesk(cfg, ledger).scan({"AAPL": frame}, record=False)
+        assert any(r.get("signal") == "BUY" for r in rows)
+        assert ledger.run(cfg.run_id) is None
+    finally:
+        ledger.close()
+
+
 def test_explain_decision_reads_ledger_reason(tmp_path):
     cfg = load_run_config(CONFIG)
     ledger = RunLedger(tmp_path / "l.sqlite")

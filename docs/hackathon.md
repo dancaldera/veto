@@ -13,7 +13,7 @@ This file is the spec. Code is not in the first commit.
 - [ ] Trading API **and** MCP or CLI (Veto will use all three)
 - [ ] Options in the live strategy (defined-risk overlay, not 0DTE directional)
 - [ ] One-page write-up: AI logic, risk gates, Alpaca infrastructure
-- [ ] Public GitHub, demo URL, ≤5 min video, PDF slides, 16:9 cover
+- [ ] Public GitHub, demo URL (`streamlit_app.py`; Streamlit Cloud + paper secrets), ≤5 min video, PDF slides, 16:9 cover
 - [ ] lablab team named **Veto**
 
 ## Architecture target
