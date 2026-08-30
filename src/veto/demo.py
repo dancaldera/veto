@@ -56,6 +56,62 @@ def account_snapshot(broker) -> dict[str, Any] | None:
         return {"error": str(exc)}
 
 
+def format_positions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "symbol": p.get("symbol"),
+            "qty": p.get("qty"),
+            "avg_entry": p.get("avg_entry"),
+            "current_price": p.get("current_price"),
+            "asset_class": p.get("asset_class"),
+        }
+        for p in rows
+    ]
+
+
+def format_orders(rows: list[dict[str, Any]], limit: int = 20) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for order in reversed(rows):
+        out.append(
+            {
+                "submitted_at": order.get("submitted_at"),
+                "symbol": order.get("symbol"),
+                "side": order.get("side"),
+                "status": order.get("status"),
+                "filled_qty": order.get("filled_qty"),
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def format_fills(rows: list[dict[str, Any]], limit: int = 20) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for fill in reversed(rows):
+        out.append(
+            {
+                "time": fill.get("transaction_time") or fill.get("date"),
+                "symbol": fill.get("symbol"),
+                "side": fill.get("side"),
+                "qty": fill.get("qty"),
+                "price": fill.get("price"),
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def paper_tape(broker) -> dict[str, Any]:
+    """Read-only Alpaca paper positions, orders, and fills. No submissions."""
+    return {
+        "positions": format_positions(broker.positions()),
+        "orders": format_orders(broker.all_orders()),
+        "fills": format_fills(broker.activities("FILL")),
+    }
+
+
 def decision_table(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     baseline = [r for r in rows if r.get("portfolio") == "baseline"]
     return [
@@ -120,6 +176,40 @@ def render() -> None:
         st.warning(acct["error"])
     if halt and halt.get("halt_reason"):
         st.error(f"Halt reason: {halt['halt_reason']}")
+
+    st.subheader("Paper account tape")
+    st.write(
+        "Live from the same Alpaca **paper** account the operator loop trades "
+        "(fake money, same keys). Read-only. Empty until a real paper fill. "
+        "Laptop systemd logs are not copied here."
+    )
+    if broker is None:
+        st.caption("Paper keys required to load the tape.")
+    else:
+        try:
+            tape = paper_tape(broker)
+        except Exception as exc:
+            st.warning(f"Could not load paper tape: {exc}")
+            tape = None
+        if tape is not None:
+            st.markdown("**Positions**")
+            if tape["positions"]:
+                st.dataframe(tape["positions"], width="stretch", hide_index=True)
+            else:
+                st.caption("No open paper positions.")
+            order_col, fill_col = st.columns(2)
+            with order_col:
+                st.markdown("**Recent orders**")
+                if tape["orders"]:
+                    st.dataframe(tape["orders"], width="stretch", hide_index=True)
+                else:
+                    st.caption("No paper orders yet.")
+            with fill_col:
+                st.markdown("**Recent fills**")
+                if tape["fills"]:
+                    st.dataframe(tape["fills"], width="stretch", hide_index=True)
+                else:
+                    st.caption("No paper fills yet.")
 
     st.subheader("Last scan (closed bars)")
     st.write(
