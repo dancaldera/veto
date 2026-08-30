@@ -21,7 +21,8 @@ Fail-closed loop is in: frozen manifest, SMA 10/30, ranked scan, gap-capped exec
 | [docs/cover.png](docs/cover.png) | 16:9 cover |
 | [docs/prior-research.md](docs/prior-research.md) | Private lab I ran before this hackathon: frozen SMA 10/30, $100k paper desk, 2022–2026 Alpaca replay |
 | [docs/hackathon.md](docs/hackathon.md) | Eligibility, architecture, and remaining submit steps |
-| [docs/lablab-copy.md](docs/lablab-copy.md) | Form paste (after artifacts 1–5) |
+| [docs/lablab-copy.md](docs/lablab-copy.md) | Form paste (after the video) |
+| [docs/schedule.md](docs/schedule.md) | Paper-only cron/systemd loop (fake money) |
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -40,6 +41,7 @@ veto stops --dry-run      # 8% fill-derived poll; skips names with a live collar
 python -m veto.mcp_server # MCP: inspect/explain/preview; scan/execute default dry-run
 pip install -e '.[demo,broker]'
 veto demo                 # Streamlit inspect/preview app — no buy button
+DRY_RUN=1 bash scripts/daily_paper_run.sh   # scheduled loop preview (paper only)
 ```
 
 The demo is `streamlit_app.py`. Hosted: [https://bszv8nabdvvipmbetdvtgv.streamlit.app/](https://bszv8nabdvvipmbetdvtgv.streamlit.app/). Paper secrets on Streamlit Cloud. The app never places orders.
@@ -52,9 +54,9 @@ Veto does not try to “pick better tickers” in seven days. It tries to stop a
 
 ## Hard rules
 
-- Alpaca **paper** endpoint only. No live-trading code path.
+- Alpaca **paper** endpoint only. No live-trading code path. Keys must be `PK…`; `AK…` is rejected.
 - Competition account starts at **$100,000**, empty of positions and order history.
-- Baseline is the only arm that may submit broker orders.
+- Baseline is the only arm that may submit broker orders (paper fills, fake money).
 - Shadows (regime, FinBERT news) cannot place orders.
 - MCP tools are read / dry-run / explain. There is no unconstrained `buy(symbol, qty)`.
 

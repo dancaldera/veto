@@ -78,7 +78,7 @@ Server refuses to start unless paper mode is proven.
 4. Reconcile / halt.
 5. Paper-only disclaimer and this repo.
 
-If the market prints no fresh SMA cross during the week, **do not fake one**. Show honest HOLDs, `preview_collar`, and the prior-research tape.
+If the market prints no fresh SMA cross during the week, **do not fake one**. Show honest HOLDs, `preview_collar`, and the prior-research tape. A systemd paper loop (`docs/schedule.md`) can keep evaluating the fake-money account until a real cross appears.
 
 ## Remaining before submit
 

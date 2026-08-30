@@ -1,0 +1,12 @@
+[Unit]
+Description=Veto — stop monitor schedule (every 30 minutes)
+
+[Timer]
+OnCalendar=*:0/30
+OnStartupSec=10min
+Persistent=true
+AccuracySec=15s
+Unit=veto-stopmonitor.service
+
+[Install]
+WantedBy=timers.target

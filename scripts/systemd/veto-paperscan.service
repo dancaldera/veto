@@ -1,0 +1,13 @@
+[Unit]
+Description=Veto — daily paper scan (Alpaca PAPER, fake money)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO__
+ExecStart=/bin/bash __REPO__/scripts/daily_paper_run.sh
+# Preview without ledger writes or paper orders:
+#   systemctl --user edit veto-paperscan
+#   [Service]
+#   Environment=DRY_RUN=1

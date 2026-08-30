@@ -1,0 +1,9 @@
+[Unit]
+Description=Veto — 8% poll stop monitor (Alpaca PAPER, fake money)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__REPO__
+ExecStart=/bin/bash __REPO__/scripts/intraday_stop_run.sh

@@ -1,0 +1,10 @@
+[Unit]
+Description=Veto — US cash-open stock execution (09:31 America/New_York)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:31:00 America/New_York
+Persistent=true
+Unit=veto-stockexecution.service
+
+[Install]
+WantedBy=timers.target

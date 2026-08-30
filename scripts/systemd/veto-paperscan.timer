@@ -1,0 +1,10 @@
+[Unit]
+Description=Veto — crypto close schedule (00:05 UTC, Alpaca PAPER)
+
+[Timer]
+OnCalendar=*-*-* 00:05:00 UTC
+Persistent=true
+Unit=veto-paperscan.service
+
+[Install]
+WantedBy=timers.target
