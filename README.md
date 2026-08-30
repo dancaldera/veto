@@ -10,12 +10,20 @@ Paper trading is simulated. It is not live performance and not a prediction.
 
 ## Status
 
-This repository starts as **prior research + the hackathon spec**. Implementation lands in later commits during the event window. There is no trading code in the initial commit on purpose.
+Offline desk is in: frozen manifest, SMA 10/30, ledger, risk gates, **strength ranking** (not alphabet). No broker orders yet. Paper `init` waits on a clean $100k Alpaca account.
 
 | Document | What it is |
 |---|---|
 | [docs/prior-research.md](docs/prior-research.md) | Private lab I ran before this hackathon: frozen SMA 10/30, $100k paper desk, 2022–2026 Alpaca replay |
 | [docs/hackathon.md](docs/hackathon.md) | Eligibility, architecture, and what gets built this week |
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+pytest -q
+veto fingerprint          # frozen manifest hash
+veto init --offline       # local ledger only; does not talk to Alpaca
+```
 
 ## The bet
 
