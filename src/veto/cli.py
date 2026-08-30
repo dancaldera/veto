@@ -94,8 +94,64 @@ def main(argv: list[str] | None = None) -> int:
     ini.add_argument("--ledger", default=None)
     ini.set_defaults(func=cmd_init)
 
+    ex = sub.add_parser("execute", help="execute pending baseline intents (gap-capped)")
+    ex.add_argument("--asset", choices=["stock", "crypto"], required=True)
+    ex.add_argument("--dry-run", action="store_true")
+    ex.add_argument("--ledger", default=None)
+    ex.set_defaults(func=cmd_execute)
+
+    pc = sub.add_parser("preview-collar", help="preview the 1-lot put/call overlay (no order)")
+    pc.add_argument("symbol")
+    pc.add_argument("--ledger", default=None)
+    pc.set_defaults(func=cmd_preview_collar)
+
     args = parser.parse_args(argv)
     return args.func(args)
+
+
+def cmd_execute(args) -> int:
+    from .broker import PaperBroker
+
+    cfg = _cfg(args.config)
+    ledger = _ledger(args.ledger)
+    try:
+        desk = VetoDesk(cfg, ledger, PaperBroker())
+        rows = desk.execute_pending(args.asset, dry_run=args.dry_run)
+        mode = " (dry run)" if args.dry_run else ""
+        print(f"Execute {args.asset}{mode}:")
+        if not rows:
+            print("  nothing pending")
+        for row in rows:
+            print(f"  {row}")
+    except RunSafetyError as exc:
+        raise SystemExit(str(exc)) from exc
+    finally:
+        ledger.close()
+    return 0
+
+
+def cmd_preview_collar(args) -> int:
+    from .broker import PaperBroker
+
+    cfg = _cfg(args.config)
+    ledger = _ledger(args.ledger)
+    try:
+        ledger.assert_manifest(cfg)
+        desk = VetoDesk(cfg, ledger, PaperBroker())
+        preview = desk.preview_collar(args.symbol.upper())
+        print(f"Collar preview {preview['symbol']} spot=${preview['spot']:.2f}")
+        print(f"  ok={preview['ok']} reason={preview['reason']}")
+        if preview.get("put"):
+            print(f"  put={preview['put']} @ {preview['put_strike']}")
+            print(f"  call={preview['call']} @ {preview['call_strike']}")
+            print(f"  expiry={preview['expiration']} dte={preview['dte']}")
+            print(f"  estimated_debit=${preview['estimated_debit']:.2f}")
+            print(f"  cli: {preview['cli']}")
+    except RunSafetyError as exc:
+        raise SystemExit(str(exc)) from exc
+    finally:
+        ledger.close()
+    return 0
 
 
 if __name__ == "__main__":

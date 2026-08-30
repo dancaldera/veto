@@ -25,6 +25,8 @@ veto fingerprint          # frozen manifest hash
 veto status               # paper equity/cash (needs .env, never committed)
 veto init                 # bind ledger to a clean $100k paper account
 veto init --offline       # local ledger only; does not talk to Alpaca
+veto preview-collar AAPL  # 1-lot put/call overlay, no order
+veto execute --asset stock --dry-run
 ```
 
 ## The bet

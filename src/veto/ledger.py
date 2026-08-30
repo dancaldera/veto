@@ -70,6 +70,23 @@ CREATE TABLE IF NOT EXISTS decisions (
     UNIQUE(run_id, portfolio, symbol, bar_end, signal)
 );
 
+CREATE TABLE IF NOT EXISTS orders (
+    order_pk TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    decision_id TEXT,
+    portfolio TEXT NOT NULL,
+    client_order_id TEXT NOT NULL,
+    broker_order_id TEXT,
+    symbol TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    side TEXT NOT NULL,
+    requested_notional TEXT,
+    limit_price TEXT,
+    status TEXT NOT NULL,
+    submitted_at TEXT,
+    UNIQUE(run_id, client_order_id)
+);
+
 CREATE TABLE IF NOT EXISTS fills (
     fill_id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES runs(run_id),
@@ -279,10 +296,46 @@ class RunLedger:
             )
         return out
 
-    def option_overlay_names(self, run_id: str, portfolio: str = "baseline") -> set[str]:
-        """Underlyings with a still-open option overlay (net long option qty > 0)."""
-        return {
-            symbol
-            for symbol, pos in self.positions(run_id, portfolio).items()
-            if pos.asset == "option"
+    def record_order(self, row: dict[str, Any]) -> str:
+        order_pk = row.get("order_pk") or str(uuid4())
+        values = {
+            "order_pk": order_pk,
+            "decision_id": None,
+            "broker_order_id": None,
+            "requested_notional": None,
+            "limit_price": None,
+            "submitted_at": None,
+            **row,
         }
+        self.conn.execute(
+            """INSERT INTO orders
+               (order_pk, run_id, decision_id, portfolio, client_order_id,
+                broker_order_id, symbol, asset, side, requested_notional,
+                limit_price, status, submitted_at)
+               VALUES (:order_pk, :run_id, :decision_id, :portfolio, :client_order_id,
+                       :broker_order_id, :symbol, :asset, :side, :requested_notional,
+                       :limit_price, :status, :submitted_at)
+               ON CONFLICT(run_id, client_order_id) DO UPDATE SET
+                   broker_order_id=COALESCE(excluded.broker_order_id, orders.broker_order_id),
+                   status=excluded.status""",
+            values,
+        )
+        self.conn.commit()
+        found = self.conn.execute(
+            "SELECT order_pk FROM orders WHERE run_id=? AND client_order_id=?",
+            (values["run_id"], values["client_order_id"]),
+        ).fetchone()
+        return str(found["order_pk"])
+
+    def option_overlay_names(self, run_id: str, portfolio: str = "baseline") -> set[str]:
+        """Underlyings with an open collar overlay."""
+        names: set[str] = set()
+        for d in self.decisions(run_id, portfolio):
+            if d["action"] == "collar_open" and d["status"] in {"pending", "submitted", "filled"}:
+                names.add(d["symbol"])
+            if d["action"] == "collar_close" and d["status"] in {"submitted", "filled"}:
+                names.discard(d["symbol"])
+        for symbol, pos in self.positions(run_id, portfolio).items():
+            if pos.asset == "option" and pos.qty > 0:
+                names.add(symbol)
+        return names
