@@ -17,3 +17,4 @@ results/
 .ruff_cache/
 .streamlit/secrets.toml
 .DS_Store
+docs/video/
