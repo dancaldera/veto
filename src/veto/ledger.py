@@ -116,6 +116,12 @@ class RunLedger:
         if row:
             if row["config_hash"] != cfg.fingerprint:
                 raise LedgerError("Run manifest changed after initialization")
+            if broker_account_id and row["broker_account_id"] in (None, "", "offline"):
+                self.conn.execute(
+                    "UPDATE runs SET broker_account_id = ? WHERE run_id = ?",
+                    (broker_account_id, cfg.run_id),
+                )
+                self.conn.commit()
             return
         import json
 

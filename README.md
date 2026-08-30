@@ -19,9 +19,11 @@ Offline desk is in: frozen manifest, SMA 10/30, ledger, risk gates, **strength r
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e '.[dev,broker]'
 pytest -q
 veto fingerprint          # frozen manifest hash
+veto status               # paper equity/cash (needs .env, never committed)
+veto init                 # bind ledger to a clean $100k paper account
 veto init --offline       # local ledger only; does not talk to Alpaca
 ```
 

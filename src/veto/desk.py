@@ -6,10 +6,15 @@ from typing import Any, Mapping
 
 import pandas as pd
 
+from .broker import PaperBroker
 from .config import RunConfig
 from .ledger import RunLedger
 from .risk import check_entry
 from .signals import cross_strength, sma_cross_signal
+
+
+class RunSafetyError(RuntimeError):
+    """Raised when an operation would violate the paper-run contract."""
 
 
 def _bar_end(frame: pd.DataFrame) -> str:
@@ -41,9 +46,29 @@ def rank_buy_candidates(
 
 
 class VetoDesk:
-    def __init__(self, cfg: RunConfig, ledger: RunLedger):
+    def __init__(self, cfg: RunConfig, ledger: RunLedger, broker: PaperBroker | None = None):
         self.cfg = cfg
         self.ledger = ledger
+        self.broker = broker
+
+    def initialize(self) -> dict[str, Any]:
+        if self.broker is None:
+            raise RunSafetyError("A paper broker is required to initialize a run")
+        account = self.broker.account()
+        positions = self.broker.positions()
+        orders = self.broker.all_orders()
+        if abs(account["equity"] - self.cfg.starting_equity) > 1:
+            raise RunSafetyError(
+                f"Paper equity must be ${self.cfg.starting_equity:,.2f}; got ${account['equity']:,.2f}"
+            )
+        if abs(account["cash"] - self.cfg.starting_equity) > 1:
+            raise RunSafetyError(
+                f"Paper cash must be ${self.cfg.starting_equity:,.2f}; got ${account['cash']:,.2f}"
+            )
+        if positions or orders:
+            raise RunSafetyError("Paper account must be clean: no positions and no order history")
+        self.ledger.initialize_run(self.cfg, account["id"])
+        return account
 
     def scan(self, bars: Mapping[str, pd.DataFrame], record: bool = True) -> list[dict[str, Any]]:
         self.ledger.assert_manifest(self.cfg)
